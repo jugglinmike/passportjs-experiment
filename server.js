@@ -1,5 +1,6 @@
 var express = require("express");
 var passport = require("passport");
+var _ = require("underscore");
 
 //var OAuthStrategy = require("passport-oauth").OAuthStrategy;
 var TwitterStrategy = require("passport-twitter").Strategy;
@@ -25,17 +26,14 @@ passport.use(new TwitterStrategy({
 	},
 	function(token, tokenSecret, profile, done) {
 
-		var id = profile[TwitterCreds.idPath];
+		var id = profile.username;
 		var isRecognized = TwitterCreds.ids.indexOf(id) > -1;
 
-		console.log("Hey, " + id + "!");
 		if (isRecognized) {
-			console.log("You're in!");
+			return done(null, { id: "mike-twitter" });
 		} else {
-			console.log("gtfo");
+			return done("Not recognized");
 		}
-
-		done(null, { id: "mike" });
 	}
 ));
 passport.use(new GoogleStrategy({
@@ -44,7 +42,15 @@ passport.use(new GoogleStrategy({
 		callbackURL: "http://localhost:4444/auth/google/callback"
 	},
 	function(accessToken, refreshToken, profile, done) {
-		done(null, { id: "mike-google" });
+
+		var emailAddresses = _.pluck(profile.emails, "value");
+		var isRecognized = _.intersection(GoogleCreds.ids, emailAddresses).length > 0;
+
+		if (isRecognized) {
+			return done(null, { id: "mike-google" });
+		} else {
+			return done("Not recognized");
+		}
 	}
 ));
 
@@ -61,7 +67,7 @@ app.get("/", function(req, res) {
 	var htmlStrs = ["Hello, world!"];
 
 	if (req.user) {
-		console.log(req.user);
+		htmlStrs.push(JSON.stringify(req.user));
 		htmlStrs.push("<a href='/logout'>Sign out</a>");
 	} else {
 		htmlStrs.push("<a href='/auth/twitter'>Sign in with Twitter</a>");
