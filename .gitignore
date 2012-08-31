@@ -1,4 +1,6 @@
 *.swp
 *~
-credentials/*.json
+credentials/oauth/*.json
+credentials/ssl/*.pem
+credentials/ssl/*.csr
 node_modules
