@@ -25,15 +25,14 @@ passport.serializeUser(function(user, done) {
 	done(null, user.id);
 });
 passport.deserializeUser(function(id, done) {
+	// For now, don't bother persisting information about the user. Simply set
+	// a flag so the application can grant access to recognized users.
 	done(null, { id: id });
-	//User.findOne(id, function (err, user) {
-	//	done(err, user);
-	//});
 });
 
-function authorize(isRecognized, token, tokenSecret, done) {
+function authorize(isRecognized, id, done) {
 	if (isRecognized) {
-		return done(null, { id: "mike-twitter" });
+		return done(null, { id: id, isRecognized: true });
 	} else {
 		return done("Not recognized");
 	}
@@ -49,7 +48,7 @@ passport.use(new TwitterStrategy({
 		var id = profile.username;
 		var isRecognized = CREDS.oauth.twitter.ids.indexOf(id) > -1;
 
-		authorize(isRecognized, token, tokenSecret, done);
+		authorize(isRecognized, id, done);
 
 	}
 ));
@@ -60,10 +59,15 @@ passport.use(new GoogleStrategy({
 	},
 	function(accessToken, refreshToken, profile, done) {
 
+		// profile.emails is an array with the following format:
+		// [ { value: "a@b.com" }, { value: "c@d.com" }, ... ]
+		// So _.pluck out the e-mail addresses themselves.
 		var emailAddresses = _.pluck(profile.emails, "value");
-		var isRecognized = _.intersection(CREDS.oauth.google.ids, emailAddresses).length > 0;
+		var ids = _.intersection(CREDS.oauth.google.ids, emailAddresses);
+		var id = ids[0];
+		var isRecognized = (id !== undefined);
 
-		authorize(isRecognized, accessToken, refreshToken, done);
+		authorize(isRecognized, id, done);
 	}
 ));
 
@@ -93,15 +97,17 @@ function simulateSocket(cookie) {
 	sioCookieParser(fakeReq, {}, function(err) {
 		var sessionId = fakeReq.signedCookies["connect.sid"];
 		store.get(sessionId, function(err, data) {
-			console.log("Session data, retrieved by 'socket'", data);
+			if (!data || !data.passport || !data.passport.user) {
+				console.log("Rejecting this 'socket'.", data);
+			} else {
+				console.log("This 'socket' is authorized to broadcast!");
+			}
 		});
 	});
 }
 
 app.get("/", function(req, res) {
 	var htmlStrs = ["Hello, world!"];
-
-	req.session.customCounter = (req.session.customCounter || 0) + 1;
 
 	simulateSocket(req.headers.cookie);
 
@@ -120,7 +126,7 @@ app.get("/auth/twitter", passport.authenticate("twitter"));
 app.get("/auth/twitter/callback",
 	passport.authenticate("twitter", {
 		successRedirect: "/",
-		failureRedirect: "/login"
+		failureRedirect: "/"
 	}));
 
 app.get("/auth/google", passport.authenticate("google", {
@@ -131,12 +137,9 @@ app.get("/auth/google", passport.authenticate("google", {
 app.get("/auth/google/callback",
 	passport.authenticate("google", {
 		successRedirect: "/",
-		failureRedirect: "/login"
+		failureRedirect: "/"
 	}));
 
-app.get("/login", passport.authenticate("twitter"), function(req, res) {
-	res.send("Signed in!");
-});
 app.get("/logout", function(req, res) {
 	req.logOut();
 	res.redirect("/");
