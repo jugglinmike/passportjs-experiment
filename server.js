@@ -79,12 +79,31 @@ var app = express();
 var sessionSecret = "This is a secret." + Math.random();;
 var sioCookieParser = express.cookieParser(sessionSecret);
 var store = new RedisStore();
+
+// Simple Express middleware to redirect unauthorized users to the site index
+var redirectUnauthorized = function(req, res, next) {
+	// Certain pages should be accessible to anyone, namely: the index
+	// (login) page and the authorization pages
+	if (req.path === "/" || /^\/auth\//.test(req.path) ||
+		// All other pages should only be served to users that have
+		// properly authenticated
+		(req.session && req.session.passport && req.session.passport.user)) {
+		next();
+
+	// In any other case, serve the index page
+	} else {
+		res.redirect("/");
+		next("Unauthorized");
+	}
+};
+
 app.configure(function() {
 	app.use(express.bodyParser());
 	app.use(express.cookieParser());
 	app.use(express.session({ store: store, secret: sessionSecret }));
 	app.use(passport.initialize());
 	app.use(passport.session());
+	app.use(redirectUnauthorized);
 });
 
 // simulate a socket connection handler. In this case, only the raw "cookie"
@@ -98,7 +117,7 @@ function simulateSocket(cookie) {
 		var sessionId = fakeReq.signedCookies["connect.sid"];
 		store.get(sessionId, function(err, data) {
 			if (!data || !data.passport || !data.passport.user) {
-				console.log("Rejecting this 'socket'.", data);
+				console.log("Rejecting this 'socket'.");
 			} else {
 				console.log("This 'socket' is authorized to broadcast!");
 			}
@@ -120,6 +139,11 @@ app.get("/", function(req, res) {
 	}
 
 	res.send(htmlStrs.join("<br />"));
+});
+
+// This endpoint is only accessible by authenticated users
+app.get("/authonly", function(req, res) {
+	res.send("Authorized personell only!");
 });
 
 app.get("/auth/twitter", passport.authenticate("twitter"));
